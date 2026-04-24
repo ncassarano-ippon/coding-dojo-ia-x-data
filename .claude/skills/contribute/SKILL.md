@@ -1,109 +1,58 @@
 ---
 name: contribute
-description: Guide et automatise le flux de contribution au repo (fork, sync, branche, PR). Utiliser quand un contributeur veut travailler sur une issue ou soumettre une PR.
-argument-hint: [issue-number]
-arguments: [issue]
-allowed-tools: Bash(git *) Bash(gh *)
+description: Full contribution workflow for this project — branch from lille, implement, run quality gate, conventional commit, open PR to lille. Use when starting any feature, fix, or improvement.
+disable-model-invocation: true
+allowed-tools: Bash(git *) Bash(uv run just *) Bash(gh *)
+argument-hint: "[feat|fix|refactor|docs|chore] brief description"
 ---
 
-# Flux de contribution
-
-Tu guides le contributeur dans le workflow de contribution au repo upstream `CAprogs/coding-dojo-ia-x-data`.
-
-## Etape 1 - Vérifier le setup
-
-Vérifie que le remote `upstream` pointe vers `CAprogs/coding-dojo-ia-x-data` :
-
-```bash
-git remote -v
+## Current state
+```!
+git branch --show-current
+git status --short
 ```
 
-Si `upstream` n'existe pas, ajoute-le :
+## Contribution rules
+- Base branch is always `lille` — never branch from `main`
+- Branch format: `<type>/<short-slug>` (e.g. `feat/retry-on-timeout`)
+- Commits follow Conventional Commits: `<type>(<scope>): <description>`
+- All PRs target `lille`
+- Never commit: `.env`, `warehouse/*.duckdb`, `datalake/`, `pea_cache/`
+- Never use `--no-verify`
 
-```bash
-git remote add upstream https://github.com/CAprogs/coding-dojo-ia-x-data.git
+## Steps
+
+**1. Verify base**
+If not on `lille`, warn the user and ask for confirmation before continuing.
+If the working tree is dirty, ask whether to stash or stop.
+
+**2. Create branch**
+Derive `<type>/<short-slug>` from `$ARGUMENTS`. Then:
+```
+git switch lille && git pull origin lille && git switch -c <branch-name>
 ```
 
-## Etape 2 - Synchroniser avec upstream
+**3. Implement**
+Make the changes described in `$ARGUMENTS`. Project conventions:
+- Python: 120-char lines, Google docstrings, mypy strict, use `log_handler` logger
+- SQL: UPPERCASE keywords, lowercase identifiers, max 230 chars/line
 
-Récupère les dernières modifications du repo de Charles et mets à jour la branche `lille` locale :
-
-```bash
-git fetch upstream
-git checkout lille
-git merge upstream/lille
-git push origin lille
+**4. Quality gate**
 ```
-
-## Etape 3 - Récupérer l'issue
-
-Si un numéro d'issue est fourni (`$issue`), récupère ses détails :
-
-```bash
-gh issue view $issue --repo CAprogs/coding-dojo-ia-x-data
+uv run just quality-all
 ```
+Fix all errors (ruff, mypy, sqlfluff). Re-run until clean. After 3 failed attempts, stop and report remaining errors.
 
-Affiche un résumé de l'issue au contributeur (titre, description, labels, assignee).
-
-Si aucun numéro n'est fourni, liste les issues ouvertes disponibles :
-
-```bash
-gh issue list --repo CAprogs/coding-dojo-ia-x-data --state open
+**5. Commit**
+Stage only relevant files (no `.env`, no generated files). Commit:
 ```
-
-Demande au contributeur quelle issue il veut traiter.
-
-## Etape 4 - S'assigner sur l'issue
-
-Assigne le contributeur sur l'issue pour signaler aux autres qu'il travaille dessus et éviter les doublons :
-
-```bash
-gh issue edit $issue --repo CAprogs/coding-dojo-ia-x-data --add-assignee @me
+git commit -m "<type>(<scope>): <short description>"
 ```
+If the commit-msg hook rejects, revise and retry.
 
-## Etape 5 - Créer la branche de travail
-
-Crée une branche nommée d'après l'issue depuis `lille` à jour :
-
-```bash
-git checkout -b issue-$issue lille
+**6. Open PR**
 ```
-
-## Etape 6 - Développement
-
-Informe le contributeur qu'il peut maintenant travailler sur sa branche. Rappelle-lui de :
-- Faire des commits atomiques et clairs
-- Référencer l'issue dans les messages de commit (ex: `refs #$issue`)
-
-## Etape 7 - Pousser et créer la PR
-
-Une fois le travail terminé, pousse la branche sur le fork et crée une PR vers upstream :
-
-```bash
-git push origin issue-$issue
+git push -u origin <branch-name>
+gh pr create --base lille --title "<commit message>" --body "..."
 ```
-
-Puis crée la PR avec `gh` :
-
-```bash
-gh pr create --repo CAprogs/coding-dojo-ia-x-data \
-  --head <user>:issue-$issue \
-  --base lille \
-  --title "<titre descriptif>" \
-  --body "Closes CAprogs/coding-dojo-ia-x-data#$issue
-
-## Résumé
-<description des changements>
-
-## Tests
-<comment tester>"
-```
-
-Demande confirmation au contributeur avant de créer la PR.
-
-## Etape 8 - Suivi
-
-Informe le contributeur que :
-- La PR est en attente de review par les mainteneurs
-- Il peut suivre l'état de la PR avec `gh pr status`
-- Après merge, il devra resynchroniser son fork (reprendre à l'étape 2)
+Return the PR URL to the user.
